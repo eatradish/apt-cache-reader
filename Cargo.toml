@@ -1,0 +1,15 @@
+[package]
+name = "apt-cache-reader"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+oma-debcontrol = "0.3"
+rayon = "1.10.0"
+ahash = "0.8"
+
+[profile.release]
+lto = "thin"
+opt-level = 3
+codegen-units = 1
