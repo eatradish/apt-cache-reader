@@ -18,11 +18,11 @@ fn main() -> anyhow::Result<()> {
     let paths = collect_all_packages_paths()?;
     let pkgs = collect_all_packages(&paths);
 
-    for i in pkgs {
-        if i.get(PACKAGE_FIELD).is_some_and(|x| query.contains(x)) {
-            println!("{:#?}", i);
+    pkgs.par_iter().for_each(|x| {
+        if x.get(PACKAGE_FIELD).is_some_and(|x| query.contains(x)) {
+            println!("{:#?}", x);
         }
-    }
+    });
 
     Ok(())
 }
