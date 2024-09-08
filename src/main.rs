@@ -5,7 +5,6 @@ use std::{
 };
 
 use ahash::RandomState;
-use aho_corasick::AhoCorasick;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 type IndexMap<K, V> = indexmap::IndexMap<K, V, RandomState>;
@@ -17,11 +16,10 @@ const PACKAGES_FILE_SUFFIX: &str = "_Packages";
 fn main() -> anyhow::Result<()> {
     let query = args().skip(1).collect::<Vec<_>>();
     let paths = collect_all_packages_paths()?;
-    let ac = AhoCorasick::new(query)?;
     let pkgs = collect_all_packages(&paths);
 
     for i in pkgs {
-        if i.get(PACKAGE_FIELD).is_some_and(|x| ac.is_match(x)) {
+        if i.get(PACKAGE_FIELD).is_some_and(|x| query.contains(x)) {
             println!("{:#?}", i);
         }
     }
