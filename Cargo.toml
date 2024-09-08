@@ -9,6 +9,8 @@ oma-debcontrol = "0.3"
 rayon = "1.10.0"
 ahash = "0.8"
 aho-corasick = "1"
+indexmap = "2"
+
 
 [profile.release]
 lto = "thin"

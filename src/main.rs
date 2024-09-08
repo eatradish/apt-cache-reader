@@ -4,9 +4,11 @@ use std::{
     path::PathBuf,
 };
 
-use ahash::AHashMap;
+use ahash::RandomState;
 use aho_corasick::AhoCorasick;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
+type IndexMap<K, V> = indexmap::IndexMap<K, V, RandomState>;
 
 const PACKAGE_FIELD: &str = "Package";
 const APT_LISTS_DIR: &str = "/var/lib/apt/lists";
@@ -42,7 +44,7 @@ fn collect_all_packages_paths() -> anyhow::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-fn collect_all_packages(paths: &[PathBuf]) -> Vec<AHashMap<String, String>> {
+fn collect_all_packages(paths: &[PathBuf]) -> Vec<IndexMap<String, String>> {
     paths
         .par_iter()
         .filter_map(|p| {
@@ -52,7 +54,7 @@ fn collect_all_packages(paths: &[PathBuf]) -> Vec<AHashMap<String, String>> {
             let packages_file = oma_debcontrol::parse_str(&f).ok()?;
 
             for p in packages_file {
-                let mut map = AHashMap::new();
+                let mut map = IndexMap::with_hasher(ahash::RandomState::new());
                 for f in p.fields {
                     map.insert(f.name.to_string(), f.value);
                 }
