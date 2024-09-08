@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
     let query = args().skip(1).collect::<Vec<_>>();
     let paths = collect_all_packages_paths()?;
     let ac = AhoCorasick::new(query)?;
-    let pkgs = collect_all_packages(&paths)?;
+    let pkgs = collect_all_packages(&paths);
 
     for i in pkgs {
         if i.get(PACKAGE_FIELD).is_some_and(|x| ac.is_match(x)) {
@@ -42,8 +42,8 @@ fn collect_all_packages_paths() -> anyhow::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-fn collect_all_packages(paths: &[PathBuf]) -> anyhow::Result<Vec<AHashMap<String, String>>> {
-    let pkgs = paths
+fn collect_all_packages(paths: &[PathBuf]) -> Vec<AHashMap<String, String>> {
+    paths
         .par_iter()
         .filter_map(|p| {
             let mut v = vec![];
@@ -62,7 +62,5 @@ fn collect_all_packages(paths: &[PathBuf]) -> anyhow::Result<Vec<AHashMap<String
             Some(v)
         })
         .flatten()
-        .collect::<Vec<_>>();
-
-    Ok(pkgs)
+        .collect::<Vec<_>>()
 }
