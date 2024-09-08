@@ -1,9 +1,15 @@
 use std::{
-    env::args, fs::{self, read_dir}, path::PathBuf
+    env::args,
+    fs::{self, read_dir},
+    path::PathBuf,
 };
 
 use ahash::AHashMap;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
+const PACKAGE_FIELD: &str = "Package";
+const APT_LISTS_DIR: &str = "/var/lib/apt/lists";
+const PACKAGES_FILE_SUFFIX: &str = "_Packages";
 
 fn main() -> anyhow::Result<()> {
     let query = args().skip(1).collect::<Vec<_>>();
@@ -12,7 +18,7 @@ fn main() -> anyhow::Result<()> {
     let pkgs = collect_all_packages(&paths)?;
 
     for i in pkgs {
-        if i.get("Package").is_some_and(|x| query.contains(x)) {
+        if i.get(PACKAGE_FIELD).is_some_and(|x| query.contains(x)) {
             println!("{:#?}", i);
         }
     }
@@ -22,9 +28,12 @@ fn main() -> anyhow::Result<()> {
 
 fn collect_all_packages_paths() -> anyhow::Result<Vec<PathBuf>> {
     let mut paths = vec![];
-    for i in read_dir("/var/lib/apt/lists")? {
+    for i in read_dir(APT_LISTS_DIR)? {
         let i = i?;
-        if i.file_name().to_string_lossy().ends_with("_Packages") {
+        if i.file_name()
+            .to_string_lossy()
+            .ends_with(PACKAGES_FILE_SUFFIX)
+        {
             paths.push(i.path());
         }
     }
