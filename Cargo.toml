@@ -8,10 +8,12 @@ anyhow = "1"
 oma-debcontrol = "0.3"
 rayon = "1.10.0"
 ahash = "0.8"
-indexmap = "2"
-
+indexmap = { version = "2", features = ["serde"] }
+bincode = "1"
+serde = { version = "1", features = ["derive"] }
 
 [profile.release]
 lto = "thin"
 opt-level = 3
 codegen-units = 1
+debug = 2

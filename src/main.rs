@@ -1,11 +1,8 @@
 use std::{
-    env::args,
-    fs::{self, read_dir},
-    path::PathBuf,
+    env::args, fs::{self, read_dir, File}, io::{BufReader, BufWriter}, path::{Path, PathBuf}
 };
 
 use ahash::RandomState;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 type IndexMap<K, V> = indexmap::IndexMap<K, V, RandomState>;
 
@@ -15,14 +12,27 @@ const PACKAGES_FILE_SUFFIX: &str = "_Packages";
 
 fn main() -> anyhow::Result<()> {
     let query = args().skip(1).collect::<Vec<_>>();
-    let paths = collect_all_packages_paths()?;
-    let pkgs = collect_all_packages(&paths);
 
-    pkgs.par_iter().for_each(|x| {
-        if x.get(PACKAGE_FIELD).is_some_and(|x| query.contains(x)) {
-            println!("{:#?}", x);
-        }
-    });
+    let pkgs = if !Path::new("./cache").exists() {
+        let paths = collect_all_packages_paths()?;
+        let pkgs = collect_all_packages(&paths);
+        let f = BufWriter::new(File::create("./cache").unwrap());
+        bincode::serialize_into(f, &pkgs).unwrap();
+
+        pkgs
+    } else {
+        let f = BufReader::new(File::open("./cache").unwrap());
+        let pkgs = bincode::deserialize_from(f).unwrap();
+        pkgs
+    };
+
+    for q in query {
+        let Some(q) = pkgs.get(&q) else {
+            continue;
+        };
+
+        println!("{:#?}", q);
+    }
 
     Ok(())
 }
@@ -42,25 +52,32 @@ fn collect_all_packages_paths() -> anyhow::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-fn collect_all_packages(paths: &[PathBuf]) -> Vec<IndexMap<String, String>> {
-    paths
-        .par_iter()
-        .filter_map(|p| {
-            let mut v = vec![];
-            let f = fs::read_to_string(p).ok()?;
+fn collect_all_packages(paths: &[PathBuf]) -> IndexMap<String, Vec<IndexMap<String, String>>> {
+    let mut res = IndexMap::with_hasher(RandomState::new());
 
-            let packages_file = oma_debcontrol::parse_str(&f).ok()?;
+    for p in paths {
+        let f = fs::read_to_string(p).unwrap();
+        let packages_file = oma_debcontrol::parse_str(&f).unwrap();
 
-            for p in packages_file {
-                let mut map = IndexMap::with_hasher(ahash::RandomState::new());
-                for f in p.fields {
-                    map.insert(f.name.to_string(), f.value);
+        for p in packages_file {
+            let mut map = IndexMap::with_hasher(ahash::RandomState::new());
+            let mut name = None;
+            for f in p.fields {
+                if f.name == PACKAGE_FIELD {
+                    name = Some(f.value.to_string());
                 }
-                v.push(map)
+                map.insert(f.name.to_string(), f.value);
             }
 
-            Some(v)
-        })
-        .flatten()
-        .collect::<Vec<_>>()
+            let name = name.unwrap();
+            if !res.contains_key(&name) {
+                res.insert(name, vec![map]);
+            } else {
+                res.get_mut(&name).unwrap().push(map);
+            }
+        }
+
+    }
+
+    res
 }
