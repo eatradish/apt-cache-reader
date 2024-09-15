@@ -1,8 +1,12 @@
 use std::{
-    env::args, fs::{self, read_dir, File}, io::{BufReader, BufWriter}, path::{Path, PathBuf}
+    env::args,
+    fs::{self, read_dir, File},
+    io::{BufReader, BufWriter},
+    path::{Path, PathBuf},
 };
 
 use ahash::RandomState;
+use anyhow::{anyhow, Result};
 
 type IndexMap<K, V> = indexmap::IndexMap<K, V, RandomState>;
 
@@ -10,20 +14,19 @@ const PACKAGE_FIELD: &str = "Package";
 const APT_LISTS_DIR: &str = "/var/lib/apt/lists";
 const PACKAGES_FILE_SUFFIX: &str = "_Packages";
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let query = args().skip(1).collect::<Vec<_>>();
 
     let pkgs = if !Path::new("./cache").exists() {
         let paths = collect_all_packages_paths()?;
-        let pkgs = collect_all_packages(&paths);
-        let f = BufWriter::new(File::create("./cache").unwrap());
-        bincode::serialize_into(f, &pkgs).unwrap();
+        let pkgs = collect_all_packages(&paths)?;
+        let f = BufWriter::new(File::create("./cache")?);
+        bincode::serialize_into(f, &pkgs)?;
 
         pkgs
     } else {
-        let f = BufReader::new(File::open("./cache").unwrap());
-        let pkgs = bincode::deserialize_from(f).unwrap();
-        pkgs
+        let f = BufReader::new(File::open("./cache")?);
+        bincode::deserialize_from(f)?
     };
 
     for q in query {
@@ -31,13 +34,13 @@ fn main() -> anyhow::Result<()> {
             continue;
         };
 
-        println!("{:#?}", q);
+        println!("{}", q.first().unwrap().get("Description").unwrap());
     }
 
     Ok(())
 }
 
-fn collect_all_packages_paths() -> anyhow::Result<Vec<PathBuf>> {
+fn collect_all_packages_paths() -> Result<Vec<PathBuf>> {
     let mut paths = vec![];
     for i in read_dir(APT_LISTS_DIR)? {
         let i = i?;
@@ -52,12 +55,14 @@ fn collect_all_packages_paths() -> anyhow::Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-fn collect_all_packages(paths: &[PathBuf]) -> IndexMap<String, Vec<IndexMap<String, String>>> {
+fn collect_all_packages(
+    paths: &[PathBuf],
+) -> Result<IndexMap<String, Vec<IndexMap<String, String>>>> {
     let mut res = IndexMap::with_hasher(RandomState::new());
 
     for p in paths {
-        let f = fs::read_to_string(p).unwrap();
-        let packages_file = oma_debcontrol::parse_str(&f).unwrap();
+        let f = fs::read_to_string(p)?;
+        let packages_file = oma_debcontrol::parse_str(&f).map_err(|e| anyhow!("{e}"))?;
 
         for p in packages_file {
             let mut map = IndexMap::with_hasher(ahash::RandomState::new());
@@ -76,8 +81,7 @@ fn collect_all_packages(paths: &[PathBuf]) -> IndexMap<String, Vec<IndexMap<Stri
                 res.get_mut(&name).unwrap().push(map);
             }
         }
-
     }
 
-    res
+    Ok(res)
 }
