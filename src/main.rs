@@ -1,40 +1,41 @@
 use std::{
     env::args,
-    fs::{self, read_dir, File},
-    io::{BufReader, BufWriter},
-    path::{Path, PathBuf},
+    fs::{self, read_dir},
+    path::PathBuf,
+    time::Instant,
 };
 
-use ahash::RandomState;
-use anyhow::{anyhow, Result};
+use ahash::HashMap;
+use anyhow::Result;
+use deb822_lossless::Deb822;
+use debian_control::Binary;
 
-type IndexMap<K, V> = indexmap::IndexMap<K, V, RandomState>;
-
-const PACKAGE_FIELD: &str = "Package";
 const APT_LISTS_DIR: &str = "/var/lib/apt/lists";
 const PACKAGES_FILE_SUFFIX: &str = "_Packages";
 
 fn main() -> Result<()> {
-    let query = args().skip(1).collect::<Vec<_>>();
+    let query = args().skip(1);
 
-    let pkgs = if !Path::new("./cache").exists() {
-        let paths = collect_all_packages_paths()?;
-        let pkgs = collect_all_packages(&paths)?;
-        let f = BufWriter::new(File::create("./cache")?);
-        bincode::serialize_into(f, &pkgs)?;
-
-        pkgs
-    } else {
-        let f = BufReader::new(File::open("./cache")?);
-        bincode::deserialize_from(f)?
-    };
+    let paths = collect_all_packages_paths()?;
+    let pkgs = collect_all_packages(&paths)?;
 
     for q in query {
-        let Some(q) = pkgs.get(&q) else {
+        let now = Instant::now();
+        let Some(binarys) = pkgs.get(&q) else {
             continue;
         };
 
-        println!("{}", q.first().unwrap().get("Description").unwrap());
+        for b in binarys {
+            let p = b.as_deb822();
+            println!("{}", p);
+        }
+
+        // let Some(desc) = binarys.first().unwrap().description() else {
+        //     continue;
+        // };
+
+        // println!("{}", desc);
+        println!("timer: {}s", now.elapsed().as_secs_f64());
     }
 
     Ok(())
@@ -55,31 +56,19 @@ fn collect_all_packages_paths() -> Result<Vec<PathBuf>> {
     Ok(paths)
 }
 
-fn collect_all_packages(
-    paths: &[PathBuf],
-) -> Result<IndexMap<String, Vec<IndexMap<String, String>>>> {
-    let mut res = IndexMap::with_hasher(RandomState::new());
+fn collect_all_packages(paths: &[PathBuf]) -> Result<HashMap<String, Vec<Binary>>> {
+    let mut res: HashMap<_, Vec<_>> = HashMap::with_hasher(ahash::RandomState::new());
 
-    for p in paths {
-        let f = fs::read_to_string(p)?;
-        let packages_file = oma_debcontrol::parse_str(&f).map_err(|e| anyhow!("{e}"))?;
+    for path in paths {
+        let f = fs::read_to_string(path)?;
+        let control: Deb822 = f.parse()?;
 
-        for p in packages_file {
-            let mut map = IndexMap::with_hasher(ahash::RandomState::new());
-            let mut name = None;
-            for f in p.fields {
-                if f.name == PACKAGE_FIELD {
-                    name = Some(f.value.to_string());
-                }
-                map.insert(f.name.to_string(), f.value);
-            }
-
-            let name = name.unwrap();
-            if !res.contains_key(&name) {
-                res.insert(name, vec![map]);
-            } else {
-                res.get_mut(&name).unwrap().push(map);
-            }
+        for p in control.paragraphs() {
+            let binary: Binary = p.into();
+            let Some(name) = binary.name() else {
+                continue;
+            };
+            res.entry(name).or_default().push(binary);
         }
     }
 
